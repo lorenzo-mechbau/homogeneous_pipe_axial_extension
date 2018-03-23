@@ -399,7 +399,7 @@ equationsSet.EquationsCreateFinish()
 problem = iron.Problem()
 problemSpecification = [iron.ProblemClasses.ELASTICITY,
     iron.ProblemTypes.FINITE_ELASTICITY,
-    iron.ProblemSubtypes.FINITE_ELASTICITY_CELLML]
+    iron.ProblemSubtypes.FINITE_ELASTICITY_WITH_CELLML]
 problem.CreateStart(problemUserNumber, problemSpecification)
 problem.CreateFinish()
 #DOC-END define CellML finite elasticity problem
@@ -416,7 +416,7 @@ nonLinearSolver = iron.Solver()
 linearSolver = iron.Solver()
 problem.SolversCreateStart()
 problem.SolverGet([iron.ControlLoopIdentifiers.NODE],1,nonLinearSolver)
-nonLinearSolver.OutputTypeSet(iron.SolverOutputTypes.PROGRESS)
+nonLinearSolver.OutputTypeSet(iron.SolverOutputTypes.MONITOR)
 nonLinearSolver.NewtonJacobianCalculationTypeSet(iron.JacobianCalculationTypes.FD)
 nonLinearSolver.NewtonLinearSolverGet(linearSolver)
 #Use the DIRECT MUMPS solver
