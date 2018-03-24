@@ -20,9 +20,9 @@ from opencmiss.iron import iron
 
 # Set problem parameters
 #Use pressure to enforce incompressibililty constraint
-UsePressureBasis = True
+usePressureBasis = True
 #Atleast 3 Gauss quadrature points along an xi direction is required for finite elasticity problems
-NumberOfGaussXi = 3
+numberOfGaussXi = 3
 
 #Setup field number handles
 coordinateSystemUserNumber = 1
@@ -30,31 +30,36 @@ regionUserNumber = 1
 basisUserNumber = 1
 pressureBasisUserNumber = 2
 meshUserNumber = 1
-CellMLUserNumber = 1
+cellMLUserNumber = 1
 decompositionUserNumber = 1
 equationsSetUserNumber = 1
 problemUserNumber = 1
 #Mesh component numbers
-QuadraticMeshComponentNumber = 1
-LinearMeshComponentNumber = 2
+quadraticMeshComponentNumber = 1
+linearMeshComponentNumber = 2
 #Fields
 geometricFieldUserNumber = 1
 fibreFieldUserNumber = 2
 dependentFieldUserNumber = 3
-CellMLModelsFieldUserNumber = 4
-CellMLParametersFieldUserNumber = 5
-CellMLIntermediateFieldUserNumber = 6
+cellMLModelsFieldUserNumber = 4
+cellMLParametersFieldUserNumber = 5
+cellMLIntermediateFieldUserNumber = 6
 equationsSetFieldUserNumber = 7
 
 # Set all diganostic levels on for testing
 #iron.DiagnosticsSetOn(iron.DiagnosticTypes.ALL,[1,2,3,4,5],"Diagnostics",["DOMAIN_MAPPINGS_LOCAL_FROM_GLOBAL_CALCULATE"])
 
-if(UsePressureBasis):
+if(usePressureBasis):
     numberOfMeshComponents = 2
 else:
     numberOfMeshComponents = 1
     
-
+# Set the OpenCMISS random seed so that we can test this example by using the
+# same parallel decomposition
+numberOfRandomSeeds = iron.RandomSeedsSizeGet()
+randomSeeds = [0]*numberOfRandomSeeds
+randomSeeds[0] = 100
+iron.RandomSeedsSet(randomSeeds)
 
 # Get the number of computational nodes and this computational node number
 numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
@@ -76,22 +81,22 @@ region.CreateFinish()
 # Define basis
 basis = iron.Basis()
 basis.CreateStart(basisUserNumber)
-basis.type = iron.BasisTypes.LAGRANGE_HERMITE_TP
-basis.numberOfXi = numberOfXi
-basis.interpolationXi = [iron.BasisInterpolationSpecifications.QUADRATIC_LAGRANGE]*numberOfXi
-if(NumberOfGaussXi>0):
-    basis.quadratureNumberOfGaussXi = [NumberOfGaussXi]*numberOfXi
+basis.TypeSet(iron.BasisTypes.LAGRANGE_HERMITE_TP)
+basis.NumberOfXiSet(numberOfXi)
+basis.InterpolationXiSet([iron.BasisInterpolationSpecifications.QUADRATIC_LAGRANGE]*numberOfXi)
+if(numberOfGaussXi>0):
+    basis.QuadratureNumberOfGaussXiSet([numberOfGaussXi]*numberOfXi)
 basis.CreateFinish()
 
-if(UsePressureBasis):
+if(usePressureBasis):
     # Define pressure basis
     pressureBasis = iron.Basis()
     pressureBasis.CreateStart(pressureBasisUserNumber)
-    pressureBasis.type = iron.BasisTypes.LAGRANGE_HERMITE_TP
-    pressureBasis.numberOfXi = numberOfXi 
-    pressureBasis.interpolationXi = [iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE]*numberOfXi
-    if(NumberOfGaussXi>0):
-        pressureBasis.quadratureNumberOfGaussXi = [NumberOfGaussXi]*numberOfXi
+    pressureBasis.TypeSet(iron.BasisTypes.LAGRANGE_HERMITE_TP)
+    pressureBasis.NumberOfXiSet(numberOfXi)
+    pressureBasis.InterpolationXiSet([iron.BasisInterpolationSpecifications.LINEAR_LAGRANGE]*numberOfXi)
+    if(numberOfGaussXi>0):
+        pressureBasis.QuadratureNumberOfGaussXiSet([numberOfGaussXi]*numberOfXi)
     pressureBasis.CreateFinish()
 
 # Start the creation of input mesh in the region
@@ -106,28 +111,28 @@ nodes.CreateStart(region, exregion.num_nodes)
 nodes.CreateFinish()
 
 #Specify the elementwise topology
-quadraticelements = iron.MeshElements()
-quadraticelements.CreateStart(mesh, QuadraticMeshComponentNumber, basis)
+quadraticElemnts = iron.MeshElements()
+quadraticElemnts.CreateStart(mesh, quadraticMeshComponentNumber, basis)
 for elem in exregion.elements:
-    quadraticelements.NodesSet(elem.number, elem.nodes)
-quadraticelements.CreateFinish()
+    quadraticElemnts.NodesSet(elem.number, elem.nodes)
+quadraticElemnts.CreateFinish()
 
-if(UsePressureBasis):
+if(usePressureBasis):
     #Specify the elementwise topology that suits the mesh element basis
-    linearelements = iron.MeshElements()
-    linearelements.CreateStart(mesh, LinearMeshComponentNumber, pressureBasis)
+    linearElements = iron.MeshElements()
+    linearElements.CreateStart(mesh, linearMeshComponentNumber, pressureBasis)
     for elem in exregion.elements:
         linearNodes = list(elem.nodes[i - 1] for i in [1, 3, 7, 9, 19, 21, 25, 27])
-        linearelements.NodesSet(elem.number, linearNodes)
-    linearelements.CreateFinish()
+        linearElements.NodesSet(elem.number, linearNodes)
+    linearElements.CreateFinish()
 mesh.CreateFinish()
 
 
 # Create a decomposition for the mesh
 decomposition = iron.Decomposition()
 decomposition.CreateStart(decompositionUserNumber,mesh)
-decomposition.type = iron.DecompositionTypes.CALCULATED
-decomposition.numberOfDomains = numberOfComputationalNodes
+decomposition.TypeSet(iron.DecompositionTypes.CALCULATED)
+decomposition.NumberOfDomainsSet(numberOfComputationalNodes)
 decomposition.CreateFinish()
 
 # Create a field for the geometry
@@ -141,34 +146,35 @@ geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,2,1)
 geometricField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,3,1)
 geometricField.CreateFinish()
 
-# Update the geometric field parameters manually
-geometricField.ParameterSetUpdateStart(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
-
 #Set the geometric information from the exregion file
 #Here we will record special nodes of interest, specifically boundary nodes where we wish to specify boundary values
 left_boundary_nodes = []
 right_boundary_nodes = []
 # DOC-START define node coordinates
 # Read the geometric field 
-for node_num in exregion.nodeids:
-    version = 1
-    derivative = 1
-    coord = []
-    for component in range(1, numberOfXi + 1):
-        component_name = ["1", "2", "3"][component - 1]
-        value = exregion.node_value("coordinates", component_name, node_num, derivative)
-        geometricField.ParameterSetUpdateNodeDP(
+for nodeNumber in exregion.nodeids:
+    nodeDomain = decomposition.NodeDomainGet(nodeNumber,1)
+    if(nodeDomain == computationalNodeNumber):
+        version = 1
+        derivative = 1
+        coord = []
+        for component in range(1, numberOfXi + 1):
+            component_name = ["1", "2", "3"][component - 1]
+            value = exregion.node_value("coordinates", component_name, nodeNumber, derivative)
+            geometricField.ParameterSetUpdateNodeDP(
                 iron.FieldVariableTypes.U,
                 iron.FieldParameterSetTypes.VALUES,
-                version, derivative, node_num, component, value)
-        coord.append(value)
-#The cylinder has an axial length of 5 units and coord[2] contains the axial coordinate value        
-    if coord[2] < 0.001:
-        left_boundary_nodes.append(node_num)
-    elif coord[2] > 4.999:
-        right_boundary_nodes.append(node_num)
+                version, derivative, nodeNumber, component, value)
+            coord.append(value)
+        #The cylinder has an axial length of 5 units and coord[2] contains the axial coordinate value        
+        if coord[2] < 0.001:
+            left_boundary_nodes.append(nodeNumber)
+        elif coord[2] > 4.999:
+            right_boundary_nodes.append(nodeNumber)
            
 
+# Update the geometric field parameters 
+geometricField.ParameterSetUpdateStart(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
 geometricField.ParameterSetUpdateFinish(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
 # DOC-END define node coordinates
 
@@ -198,43 +204,40 @@ dependentField.DependentTypeSet(iron.FieldDependentTypes.DEPENDENT)
 #Displacement, Gradient, Strain and Stress Tensors 
 dependentField.NumberOfVariablesSet(4)
 dependentField.VariableTypesSet([iron.FieldVariableTypes.U,iron.FieldVariableTypes.DELUDELN,iron.FieldVariableTypes.U1,iron.FieldVariableTypes.U2])
-
 dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U,4)
 dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.DELUDELN,4)
-    
 dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U1,6)
 dependentField.NumberOfComponentsSet(iron.FieldVariableTypes.U2,6)
 
 #Assign the mesh from which the quantities are determined
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,1,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,2,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,3,QuadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,1,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,2,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,3,quadraticMeshComponentNumber)
   
-  
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,1,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,2,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,3,QuadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,1,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,2,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,3,quadraticMeshComponentNumber)
 
-if(UsePressureBasis):
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,4,LinearMeshComponentNumber)  
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,4,LinearMeshComponentNumber)
+if(usePressureBasis):
+    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,4,linearMeshComponentNumber)  
+    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,4,linearMeshComponentNumber)
 else:
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,4,QuadraticMeshComponentNumber)
-    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,4,QuadraticMeshComponentNumber)
+    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,4,quadraticMeshComponentNumber)
+    dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,4,quadraticMeshComponentNumber)
     
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,1,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,2,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,3,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,4,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,5,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,6,QuadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,1,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,2,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,3,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,4,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,5,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U1,6,quadraticMeshComponentNumber)
 
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,1,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,2,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,3,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,4,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,5,QuadraticMeshComponentNumber)
-dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,6,QuadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,1,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,2,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,3,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,4,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,5,quadraticMeshComponentNumber)
+dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U2,6,quadraticMeshComponentNumber)
 
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U1,1,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U1,2,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
@@ -250,8 +253,7 @@ dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U2,4,iron.Field
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U2,5,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
 dependentField.ComponentInterpolationSet(iron.FieldVariableTypes.U2,6,iron.FieldInterpolationTypes.GAUSS_POINT_BASED)
 
-
-if(UsePressureBasis):
+if(usePressureBasis):
     dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.U,4,2)
     dependentField.ComponentMeshComponentSet(iron.FieldVariableTypes.DELUDELN,4,2)
 
@@ -273,7 +275,6 @@ iron.Field.ParametersToFieldParametersComponentCopy(
 #Set hydrostatic pressure, the value depends on the constitutive law being used 
 iron.Field.ComponentValuesInitialiseDP(dependentField,iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES,4,-8.0)
 
-
 # Create the equations_set
 equationsSetField = iron.Field()
 equationsSet = iron.EquationsSet()
@@ -284,114 +285,115 @@ equationsSet.CreateStart(equationsSetUserNumber, region, fibreField,
         equationsSetSpecification, equationsSetFieldUserNumber, equationsSetField)
 equationsSet.CreateFinish()
 
-
 equationsSet.DependentCreateStart(dependentFieldUserNumber, dependentField)
 equationsSet.DependentCreateFinish()
 
 
-#DOC-START create cellml environment
+#DOC-START create CellML environment
 # Create the CellML environment
-CellML = iron.CellML()
-CellML.CreateStart(CellMLUserNumber, region)
+cellML = iron.CellML()
+cellML.CreateStart(cellMLUserNumber, region)
 # Import a Mooney-Rivlin material law from a file
-MooneyRivlinModel = CellML.ModelImport("mooney_rivlin.xml")
+mooneyRivlinModel = cellML.ModelImport("mooney_rivlin.xml")
 #DOC-END create cellml environment
 
 #DOC-START flag variables
 # Now we have imported the model we are able to specify which variables from the model we want to set from openCMISS
-CellML.VariableSetAsKnown(MooneyRivlinModel, "equations/E11")
-CellML.VariableSetAsKnown(MooneyRivlinModel, "equations/E12")
-CellML.VariableSetAsKnown(MooneyRivlinModel, "equations/E13")
-CellML.VariableSetAsKnown(MooneyRivlinModel, "equations/E22")
-CellML.VariableSetAsKnown(MooneyRivlinModel, "equations/E23")
-CellML.VariableSetAsKnown(MooneyRivlinModel, "equations/E33")
+cellML.VariableSetAsKnown(mooneyRivlinModel, "equations/E11")
+cellML.VariableSetAsKnown(mooneyRivlinModel, "equations/E12")
+cellML.VariableSetAsKnown(mooneyRivlinModel, "equations/E13")
+cellML.VariableSetAsKnown(mooneyRivlinModel, "equations/E22")
+cellML.VariableSetAsKnown(mooneyRivlinModel, "equations/E23")
+cellML.VariableSetAsKnown(mooneyRivlinModel, "equations/E33")
 # and variables to get from the CellML 
-CellML.VariableSetAsWanted(MooneyRivlinModel, "equations/Tdev11")
-CellML.VariableSetAsWanted(MooneyRivlinModel, "equations/Tdev12")
-CellML.VariableSetAsWanted(MooneyRivlinModel, "equations/Tdev13")
-CellML.VariableSetAsWanted(MooneyRivlinModel, "equations/Tdev22")
-CellML.VariableSetAsWanted(MooneyRivlinModel, "equations/Tdev23")
-CellML.VariableSetAsWanted(MooneyRivlinModel, "equations/Tdev33")
+cellML.VariableSetAsWanted(mooneyRivlinModel, "equations/Tdev11")
+cellML.VariableSetAsWanted(mooneyRivlinModel, "equations/Tdev12")
+cellML.VariableSetAsWanted(mooneyRivlinModel, "equations/Tdev13")
+cellML.VariableSetAsWanted(mooneyRivlinModel, "equations/Tdev22")
+cellML.VariableSetAsWanted(mooneyRivlinModel, "equations/Tdev23")
+cellML.VariableSetAsWanted(mooneyRivlinModel, "equations/Tdev33")
 #DOC-END flag variables
 
 #DOC-START create cellml finish
-CellML.CreateFinish()
+cellML.CreateFinish()
 #DOC-END create cellml finish
 
 
-
 # Start the creation of CellML <--> OpenCMISS field maps
-CellML.FieldMapsCreateStart()
+cellML.FieldMapsCreateStart()
 #Now we can set up the field variable component <--> CellML model variable mappings.
 #DOC-START map strain components
 #Map the strain components
-CellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,1, iron.FieldParameterSetTypes.VALUES,MooneyRivlinModel,"equations/E11", iron.FieldParameterSetTypes.VALUES)
-CellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,2, iron.FieldParameterSetTypes.VALUES,MooneyRivlinModel,"equations/E12", iron.FieldParameterSetTypes.VALUES)
-CellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,3, iron.FieldParameterSetTypes.VALUES,MooneyRivlinModel,"equations/E13", iron.FieldParameterSetTypes.VALUES)
-CellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,4, iron.FieldParameterSetTypes.VALUES,MooneyRivlinModel,"equations/E22", iron.FieldParameterSetTypes.VALUES)
-CellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,5, iron.FieldParameterSetTypes.VALUES,MooneyRivlinModel,"equations/E23", iron.FieldParameterSetTypes.VALUES)
-CellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,6, iron.FieldParameterSetTypes.VALUES,MooneyRivlinModel,"equations/E33", iron.FieldParameterSetTypes.VALUES)
+cellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,1, iron.FieldParameterSetTypes.VALUES,mooneyRivlinModel,"equations/E11", iron.FieldParameterSetTypes.VALUES)
+cellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,2, iron.FieldParameterSetTypes.VALUES,mooneyRivlinModel,"equations/E12", iron.FieldParameterSetTypes.VALUES)
+cellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,3, iron.FieldParameterSetTypes.VALUES,mooneyRivlinModel,"equations/E13", iron.FieldParameterSetTypes.VALUES)
+cellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,4, iron.FieldParameterSetTypes.VALUES,mooneyRivlinModel,"equations/E22", iron.FieldParameterSetTypes.VALUES)
+cellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,5, iron.FieldParameterSetTypes.VALUES,mooneyRivlinModel,"equations/E23", iron.FieldParameterSetTypes.VALUES)
+cellML.CreateFieldToCellMLMap(dependentField,iron.FieldVariableTypes.U1,6, iron.FieldParameterSetTypes.VALUES,mooneyRivlinModel,"equations/E33", iron.FieldParameterSetTypes.VALUES)
 #DOC-END map strain components
     
 #DOC-START map stress components
 #Map the stress components
-CellML.CreateCellMLToFieldMap(MooneyRivlinModel,"equations/Tdev11", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,1,iron.FieldParameterSetTypes.VALUES)
-CellML.CreateCellMLToFieldMap(MooneyRivlinModel,"equations/Tdev12", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,2,iron.FieldParameterSetTypes.VALUES)
-CellML.CreateCellMLToFieldMap(MooneyRivlinModel,"equations/Tdev13", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,3,iron.FieldParameterSetTypes.VALUES)
-CellML.CreateCellMLToFieldMap(MooneyRivlinModel,"equations/Tdev22", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,4,iron.FieldParameterSetTypes.VALUES)
-CellML.CreateCellMLToFieldMap(MooneyRivlinModel,"equations/Tdev23", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,5,iron.FieldParameterSetTypes.VALUES)
-CellML.CreateCellMLToFieldMap(MooneyRivlinModel,"equations/Tdev33", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,6,iron.FieldParameterSetTypes.VALUES)
+cellML.CreateCellMLToFieldMap(mooneyRivlinModel,"equations/Tdev11", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,1,iron.FieldParameterSetTypes.VALUES)
+cellML.CreateCellMLToFieldMap(mooneyRivlinModel,"equations/Tdev12", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,2,iron.FieldParameterSetTypes.VALUES)
+cellML.CreateCellMLToFieldMap(mooneyRivlinModel,"equations/Tdev13", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,3,iron.FieldParameterSetTypes.VALUES)
+cellML.CreateCellMLToFieldMap(mooneyRivlinModel,"equations/Tdev22", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,4,iron.FieldParameterSetTypes.VALUES)
+cellML.CreateCellMLToFieldMap(mooneyRivlinModel,"equations/Tdev23", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,5,iron.FieldParameterSetTypes.VALUES)
+cellML.CreateCellMLToFieldMap(mooneyRivlinModel,"equations/Tdev33", iron.FieldParameterSetTypes.VALUES,dependentField,iron.FieldVariableTypes.U2,6,iron.FieldParameterSetTypes.VALUES)
 #DOC-END map stress components
 
-#Finish the creation of CellML <--> OpenCMISS field maps
-CellML.FieldMapsCreateFinish()
+#Finish the creation of cellML <--> OpenCMISS field maps
+cellML.FieldMapsCreateFinish()
 
 #DOC-START define CellML models field
 #Create the CellML models field
-CellMLModelsField = iron.Field()
-CellML.ModelsFieldCreateStart(CellMLModelsFieldUserNumber,CellMLModelsField)
-CellML.ModelsFieldCreateFinish()
+cellMLModelsField = iron.Field()
+cellML.ModelsFieldCreateStart(cellMLModelsFieldUserNumber,cellMLModelsField)
+cellML.ModelsFieldCreateFinish()
 
 # Stress, strain fields are evaluated at Gauss Points and any fields used in the computation should also have values at Gauss points
 # Iterate through each element and set it for the elements gauss points
 
-xidiv = 1.0/(NumberOfGaussXi+1)
-for elem in exregion.elements:
-#Gauss point number counter    
-    ctr = 0
-#Assign model for each quadraturePoint:
-    for xi in range(0,NumberOfGaussXi):
-        xi1 = (1.0+xi)*xidiv
-        for xj in range(0,NumberOfGaussXi):
-            xi2 = (1.0+xj)*xidiv
-            for xk in range(0,NumberOfGaussXi):
-                xi3 = (1.0+xk)*xidiv
-                ctr = ctr + 1
-                CellMLModelsField.ParameterSetUpdateGaussPoint(iron.FieldVariableTypes.U,
-                                                               iron.FieldParameterSetTypes.VALUES,
-                                                               ctr,
-                                                               elem.number,
-                                                               1,
-                                                               MooneyRivlinModel)
+xidiv = 1.0/(numberOfGaussXi+1)
+for elment in exregion.elements:
+    elmentDomain = decomposition.ElementDomainGet(elment.number)
+    if(elmentDomain == computationalNodeNumber):
+        #Gauss point number counter    
+        gaussPointIdx = 0
+        #Assign model for each quadraturePoint:
+        for xi in range(0,numberOfGaussXi):
+            xi1 = (1.0+xi)*xidiv
+            for xj in range(0,numberOfGaussXi):
+                xi2 = (1.0+xj)*xidiv
+                for xk in range(0,numberOfGaussXi):
+                    xi3 = (1.0+xk)*xidiv
+                    gaussPointIdx = gaussPointIdx + 1
+                    cellMLModelsField.ParameterSetUpdateGaussPoint(iron.FieldVariableTypes.U,
+                                                                   iron.FieldParameterSetTypes.VALUES,
+                                                                   gaussPointIdx,elment.number,1,
+                                                                   mooneyRivlinModel)
+# Update the models field parameters 
+cellMLModelsField.ParameterSetUpdateStart(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
+cellMLModelsField.ParameterSetUpdateFinish(iron.FieldVariableTypes.U,iron.FieldParameterSetTypes.VALUES)
 #DOC-END define CellML models field
 
 #DOC-START define CellML parameters and intermediate fields
 #Create the CellML parameters field --- the strain field
-CellMLParametersField = iron.Field()
-CellML.ParametersFieldCreateStart(CellMLParametersFieldUserNumber,CellMLParametersField)
-CellML.ParametersFieldCreateFinish()
+cellMLParametersField = iron.Field()
+cellML.ParametersFieldCreateStart(cellMLParametersFieldUserNumber,cellMLParametersField)
+cellML.ParametersFieldCreateFinish()
 
 #  Create the CellML intermediate field --- the stress field
-CellMLIntermediateField = iron.Field()
-CellML.IntermediateFieldCreateStart(CellMLIntermediateFieldUserNumber,CellMLIntermediateField)
-CellML.IntermediateFieldCreateFinish()
+cellMLIntermediateField = iron.Field()
+cellML.IntermediateFieldCreateStart(cellMLIntermediateFieldUserNumber,cellMLIntermediateField)
+cellML.IntermediateFieldCreateFinish()
 #DOC-END define CellML parameters and intermediate fields
 
 # Create equations
 equations = iron.Equations()
 equationsSet.EquationsCreateStart(equations)
-equations.sparsityType = iron.EquationsSparsityTypes.SPARSE
-equations.outputType = iron.EquationsOutputTypes.NONE
+equations.SparsityTypeSet(iron.EquationsSparsityTypes.SPARSE)
+equations.OutputTypeSet(iron.EquationsOutputTypes.NONE)
 equationsSet.EquationsCreateFinish()
 
 #DOC-START define CellML finite elasticity problem
@@ -430,12 +432,12 @@ problem.SolversCreateFinish()
 
 #DOC-START define CellML solver
 #Create the problem solver CellML equations
-CellMLSolver = iron.Solver()
+cellMLSolver = iron.Solver()
 problem.CellMLEquationsCreateStart()
-nonLinearSolver.NewtonCellMLSolverGet(CellMLSolver)
-CellMLEquations = iron.CellMLEquations()
-CellMLSolver.CellMLEquationsGet(CellMLEquations)
-CellMLEquations.CellMLAdd(CellML)
+nonLinearSolver.NewtonCellMLSolverGet(cellMLSolver)
+cellMLEquations = iron.CellMLEquations()
+cellMLSolver.CellMLEquationsGet(cellMLEquations)
+cellMLEquations.CellMLAdd(cellML)
 problem.CellMLEquationsCreateFinish()
 #DOC-END define CellML solver
 
@@ -445,7 +447,7 @@ solverEquations = iron.SolverEquations()
 problem.SolverEquationsCreateStart()
 problem.SolverGet([iron.ControlLoopIdentifiers.NODE],1,solver)
 solver.SolverEquationsGet(solverEquations)
-solverEquations.sparsityType = iron.SolverEquationsSparsityTypes.SPARSE
+solverEquations.SparsityTypeSet(iron.SolverEquationsSparsityTypes.SPARSE)
 equationsSetIndex = solverEquations.EquationsSetAdd(equationsSet)
 problem.SolverEquationsCreateFinish()
 
@@ -455,19 +457,19 @@ boundaryConditions = iron.BoundaryConditions()
 solverEquations.BoundaryConditionsCreateStart(boundaryConditions)
 
 #Here we model axial stretch, by pulling along the axis at both the ends of the cylinder and holding them (Direchlet)
-for NodeNumber in left_boundary_nodes:
-    NodeDomain = decomposition.NodeDomainGet(NodeNumber, 1)
-    if NodeDomain == computationalNodeNumber :
-        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, NodeNumber, 1, iron.BoundaryConditionsTypes.FIXED, 0.0)
-        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, NodeNumber, 2, iron.BoundaryConditionsTypes.FIXED, 0.0)
-        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, NodeNumber, 3, iron.BoundaryConditionsTypes.FIXED, -1.0)
+for nodeNumber in left_boundary_nodes:
+    nodeDomain = decomposition.NodeDomainGet(nodeNumber, 1)
+    if nodeDomain == computationalNodeNumber :
+        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nodeNumber, 1, iron.BoundaryConditionsTypes.FIXED, 0.0)
+        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nodeNumber, 2, iron.BoundaryConditionsTypes.FIXED, 0.0)
+        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nodeNumber, 3, iron.BoundaryConditionsTypes.FIXED, -1.0)
 
-for NodeNumber in right_boundary_nodes:
-    NodeDomain = decomposition.NodeDomainGet(NodeNumber, 1)
-    if NodeDomain == computationalNodeNumber :
-        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, NodeNumber, 1, iron.BoundaryConditionsTypes.FIXED, 0.0)
-        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, NodeNumber, 2, iron.BoundaryConditionsTypes.FIXED, 0.0)
-        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, NodeNumber, 3, iron.BoundaryConditionsTypes.FIXED, 1.0)
+for nodeNumber in right_boundary_nodes:
+    nodeDomain = decomposition.NodeDomainGet(nodeNumber, 1)
+    if nodeDomain == computationalNodeNumber :
+        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nodeNumber, 1, iron.BoundaryConditionsTypes.FIXED, 0.0)
+        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nodeNumber, 2, iron.BoundaryConditionsTypes.FIXED, 0.0)
+        boundaryConditions.AddNode(dependentField, iron.FieldVariableTypes.U, 1, 1, nodeNumber, 3, iron.BoundaryConditionsTypes.FIXED, 1.0)
 
 solverEquations.BoundaryConditionsCreateFinish()
 
