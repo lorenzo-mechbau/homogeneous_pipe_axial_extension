@@ -65,6 +65,10 @@ iron.RandomSeedsSet(randomSeeds)
 numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
 computationalNodeNumber = iron.ComputationalNodeNumberGet()
 
+if computationalNodeNumber == 0:
+    if not os.path.exists("./results"):
+        os.makedirs("./results")
+    
 # Create a 3D rectangular cartesian coordinate system
 coordinateSystem = iron.CoordinateSystem()
 coordinateSystem.CreateStart(coordinateSystemUserNumber)
@@ -481,9 +485,6 @@ solverEquations.BoundaryConditionsCreateFinish()
 #linearSolver.MumpsSetIcntl(14,640000)
 # Solve the problem
 problem.Solve()
-
-if not os.path.exists("./results"):
-    os.makedirs("./results")
 
 # Export the results, here we export them as standard exnode, exelem files
 fields = iron.Fields()
