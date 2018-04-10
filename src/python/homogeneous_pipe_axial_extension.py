@@ -62,8 +62,9 @@ randomSeeds[0] = 100
 iron.RandomSeedsSet(randomSeeds)
 
 # Get the number of computational nodes and this computational node number
-numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
-computationalNodeNumber = iron.ComputationalNodeNumberGet()
+computationEnvironment = iron.ComputationEnvironment()
+numberOfComputationalNodes = computationEnvironment.NumberOfWorldNodesGet()
+computationalNodeNumber = computationEnvironment.WorldNodeNumberGet()
 
 if computationalNodeNumber == 0:
     if not os.path.exists("./results"):
