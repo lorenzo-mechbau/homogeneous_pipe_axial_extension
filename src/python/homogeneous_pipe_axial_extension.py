@@ -6,7 +6,7 @@ import sys, os, exfile
 
 #DOC-START load exfile
 #Load the mesh information in the form of exregion format
-exregion = exfile.Exregion("hetrogenouscylinder.exregion")
+exregion = exfile.Exregion(str(sys.argv[1])+"hetrogenouscylinder.exregion")
 #DOC-END load exfile
 
 #Additional information regading the mesh should be provided, the rudimentary exfile object does not provide these details
@@ -62,9 +62,11 @@ randomSeeds[0] = 100
 iron.RandomSeedsSet(randomSeeds)
 
 # Get the number of computational nodes and this computational node number
-computationEnvironment = iron.ComputationEnvironment()
-numberOfComputationalNodes = computationEnvironment.NumberOfWorldNodesGet()
-computationalNodeNumber = computationEnvironment.WorldNodeNumberGet()
+#computationEnvironment = iron.ComputationEnvironment()
+#numberOfComputationalNodes = computationEnvironment.NumberOfWorldNodesGet()
+#computationalNodeNumber = computationEnvironment.WorldNodeNumberGet()
+numberOfComputationalNodes = iron.ComputationalNumberOfNodesGet()
+computationalNodeNumber = iron.ComputationalNodeNumberGet()
 
 if computationalNodeNumber == 0:
     if not os.path.exists("./results"):
