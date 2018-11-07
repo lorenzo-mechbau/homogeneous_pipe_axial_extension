@@ -4,9 +4,16 @@
 import sys, os, exfile
 #DOC-END imports
 
+# Path from command line argument or cd
+if len(sys.argv) > 1:
+    file_root_directory = sys.argv[1]
+else:
+    file_root_directory = os.path.dirname(__file__)
+
 #DOC-START load exfile
 #Load the mesh information in the form of exregion format
-exregion = exfile.Exregion(str(sys.argv[1])+"hetrogenouscylinder.exregion")
+hetrogenouscylinder_fileName = os.path.join(file_root_directory, "hetrogenouscylinder.exregion")
+exregion = exfile.Exregion(hetrogenouscylinder_fileName)
 #DOC-END load exfile
 
 #Additional information regading the mesh should be provided, the rudimentary exfile object does not provide these details
@@ -301,7 +308,8 @@ equationsSet.DependentCreateFinish()
 cellML = iron.CellML()
 cellML.CreateStart(cellMLUserNumber, region)
 # Import a Mooney-Rivlin material law from a file
-mooneyRivlinModel = cellML.ModelImport("mooney_rivlin.xml")
+mooneyRivlinModel_fileName = os.path.join(file_root_directory, "mooney_rivlin.xml")
+mooneyRivlinModel = cellML.ModelImport(mooneyRivlinModel_fileName)
 #DOC-END create cellml environment
 
 #DOC-START flag variables
@@ -496,3 +504,5 @@ fields.NodesExport("./results/AxialStretch","FORTRAN")
 fields.ElementsExport("./results/AxialStretch","FORTRAN")
 fields.Finalise()
 
+# Finalise OpenCMISS-Iron
+iron.Finalise()
